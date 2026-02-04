@@ -1,0 +1,3 @@
+median_window: 100
+delta_offset: 0.05
+reorder_dirty_last: true

@@ -1,0 +1,20 @@
+exp_name: raindrop
+data:
+  npz_path: data/processed/raindrop_mix.npz
+  img_size: 64
+  only_clean: false
+  limit: null
+
+train:
+  device: cuda
+  seed: 42
+  epochs: 100
+  batch_size: 256
+  lr: 5.0e-4
+  lambda_refer: 1.0
+  refer_m: 2048
+  num_workers: 4
+  save_every: 10
+
+output:
+  out_dir: outputs/cae/raindrop

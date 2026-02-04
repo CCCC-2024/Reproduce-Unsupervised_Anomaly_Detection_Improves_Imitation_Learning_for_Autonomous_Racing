@@ -1,0 +1,20 @@
+exp_name: debug_small
+data:
+  npz_path: data/processed/raindrop_mix.npz
+  img_size: 64
+  only_clean: false
+  limit: 1024
+
+train:
+  device: cuda
+  seed: 42
+  epochs: 2
+  batch_size: 64
+  lr: 5.0e-4
+  lambda_refer: 1.0
+  refer_m: 512
+  num_workers: 2
+  save_every: 1
+
+output:
+  out_dir: outputs/cae/debug_small
