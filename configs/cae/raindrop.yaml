@@ -13,7 +13,7 @@ train:
   lr: 5.0e-4
   lambda_refer: 1.0
   refer_m: 2048
-  num_workers: 4
+  num_workers: 0
   save_every: 10
 
 output:
