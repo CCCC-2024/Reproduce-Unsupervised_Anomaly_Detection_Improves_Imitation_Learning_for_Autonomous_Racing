@@ -1,5 +1,5 @@
 data/
-outputs/
+outputs/cae
 __pycache__/
 *.pkl
 *.pth
