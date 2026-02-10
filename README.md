@@ -10,7 +10,7 @@
 
 ## 0) 复现目标（验收点）
 
-### A. 异常检测 + 清洗（优先完成，对齐 Table II 思路）
+### A. 异常检测 + 清洗（优先完成， Table II ）
 对每个异常类型（例如 `raindrop / plastic / hitwall`）完成：
 1. 构造混合数据（clean : dirty = 10 : 1）
 2. 训练 CAE（含 latent reference loss）
@@ -94,7 +94,7 @@ TEA-LAB/
 - keys: `clean`, `foggy`, `greenmarker`, `plastic`, `raindrop`, `hitwall`, `debris`, `dirtytrain`
 - values: `uint8` 图像数组，shape 为 `(N, 224, 224, 3)`，像素范围 0~255
 
-### 3.2 混合数据（用于 Table II 风格评估）
+### 3.2 混合数据（Table II ）
 混合数据按 **clean : dirty = 10 : 1** 构造并保存为：
 - `data/processed/<dirty>_mix.npz`
 - `data/splits/<dirty>_mix_idx.npz`（固定抽样索引，复现一致性的关键）
@@ -103,7 +103,7 @@ TEA-LAB/
 
 ---
 
-## 4) 复现流程（推荐顺序）
+## 4) 复现流程
 
 > 所有命令都从仓库根目录执行：`TEA-LAB/`  
 > 不确定脚本参数时：`python scripts/<xxx>.py -h`
