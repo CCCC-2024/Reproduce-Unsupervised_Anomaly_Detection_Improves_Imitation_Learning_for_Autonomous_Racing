@@ -170,7 +170,7 @@ python scripts/run_train_bc.py
 
 ---
 
-## 5) outputs 约定（必须遵守）
+## 5) outputs 约定
 
 本仓库 **outputs/** 只保留以下四个子目录：
 - `outputs/cae/`：CAE checkpoints / logs  
@@ -180,8 +180,4 @@ python scripts/run_train_bc.py
 
 ---
 
-## 6) 复现注意事项
 
-- **复现一致性**：`data/splits/*_mix_idx.npz` 是关键（别删）。
-- **改超参不要覆盖基线**：建议新建 config 文件，例如 `configs/cae/raindrop_v2.yaml`。
-- CPU 训练较慢：可先用 debug_small 配置做快速验证，再跑完整配置。
