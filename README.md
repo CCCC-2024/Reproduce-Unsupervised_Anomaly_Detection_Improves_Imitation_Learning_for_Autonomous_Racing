@@ -20,10 +20,10 @@
 6. 用混合数据的 GT dirty 标签评估 **Precision / Recall（Table II 风格）**
 7. 导出 clean mask 与 cleaned 数据包，供后续 BC 使用
 
-### B. 模仿学习提升（后续）
+### B. 模仿学习提升
 拿到 steering/actions 标签后：
 - 训练 BC 控制器
-- 对比 all-data vs cleaned-data 的指标（论文使用 CTE；本仓库先支持离线指标与可视化，后续可扩展到完整评估）
+- 对比 all-data vs cleaned-data 的指标（论文使用 CTE；后续可扩展到完整评估）
 
 ---
 
