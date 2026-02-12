@@ -161,7 +161,7 @@ python scripts/run_clean_dataset.py -h
 python scripts/run_clean_dataset.py
 ```
 
-### Step 6 — 行为克隆（后续阶段）
+### Step 6 — 行为克隆
 待拿到 steering/actions 标签后：
 ```bash
 python scripts/run_train_bc.py -h
