@@ -12,14 +12,14 @@ train:
   epochs: 10
   batch_size: 256
   lr: 5.0e-4 
-  lambda_refer: 200.0
+  lambda_refer: 1
   refer_m: 2048
   num_workers: 0
   save_every: 1
-  ref_clean_only: true
-  beta_norm: 5.0
+  ref_clean_only: false
+  beta_norm: 0.0
 
 output:
   # out_dir: outputs/cae/raindrop__ep10__refrandom__cleanref1__lam200
   # out_dir: outputs/cae/raindrop__ep10__refrandom__cleanref1__lam200__znormcos
-  out_dir: outputs/cae/raindrop__ep10__refrandom__cleanref1__lam200__cos__normreg5
+  out_dir: outputs/cae/raindrop_22503

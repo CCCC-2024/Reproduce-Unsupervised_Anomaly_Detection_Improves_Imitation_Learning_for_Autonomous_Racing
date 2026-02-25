@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -30,10 +31,10 @@ def set_seed(seed: int = 0):
 
 class NpzMixDataset(Dataset):
     """
-    Expect NPZ keys:
+    NPZ keys:
       X: (N,224,224,3) uint8
       y_dirty: (N,) int {0,1}  (0=clean, 1=dirty)
-    Return:
+    Returns:
       x_u8: (224,224,3) uint8
       y_dirty: int64
       idx: int64
@@ -69,7 +70,7 @@ class NpzMixDataset(Dataset):
 
 def _to_tensor_u8_bhwc(x_u8: np.ndarray, device: torch.device, img_size: int) -> torch.Tensor:
     """
-    x_u8: (B,224,224,3) uint8 -> (B,3,img_size,img_size) float in [0,1]
+    (B,224,224,3) uint8 -> (B,3,img_size,img_size) float in [0,1]
     """
     x = torch.from_numpy(x_u8).permute(0, 3, 1, 2).float() / 255.0
     if img_size != x.shape[-1]:
@@ -78,64 +79,62 @@ def _to_tensor_u8_bhwc(x_u8: np.ndarray, device: torch.device, img_size: int) ->
 
 
 @torch.no_grad()
-def build_hrefer(
-    model,
-    ds: NpzMixDataset,
-    ref_indices: np.ndarray,
-    device: torch.device,
-    img_size: int,
-    batch: int = 256,
-) -> torch.Tensor:
+def _encode_latents(model, ds: NpzMixDataset, ids: np.ndarray, device: torch.device, img_size: int, batch: int = 256):
     """
-    Build normalized Href (M,D) once per epoch.
-    Return: (M,D) on GPU, each row L2-normalized.
+    Return latents H (len(ids), D) on device, detached.
     """
     model.eval()
     H = []
-    for s in range(0, len(ref_indices), batch):
-        ids = ref_indices[s : s + batch]
-        x = _to_tensor_u8_bhwc(ds.X[ids], device=device, img_size=img_size)
+    for s in range(0, len(ids), batch):
+        chunk = ids[s:s + batch]
+        x = _to_tensor_u8_bhwc(ds.X[chunk], device=device, img_size=img_size)
         _, z = model(x)
-        z_norm = F.normalize(z, dim=1)  # normalize direction
-        H.append(z_norm.detach())
-    return torch.cat(H, dim=0)  # (M,D) normalized
+        H.append(z.detach())
+    return torch.cat(H, dim=0)  # (M, D)
 
 
-def cosine_dist(a_norm: torch.Tensor, b_norm: torch.Tensor) -> torch.Tensor:
+def _latent_nn_ref_loss(z: torch.Tensor, Href: torch.Tensor) -> torch.Tensor:
     """
-    a_norm, b_norm: (B,D) normalized -> cosine distance per sample
+    Paper-style:
+      h_near = argmin_{h_r in Href} ||h - h_r||^2
+      Lref = mean_i ||h_i - h_near_i||^2   (sum over dim, then mean over batch)
+    z:    (B,D)
+    Href: (M,D)
     """
-    return 1.0 - (a_norm * b_norm).sum(dim=1)
+    # dist^2 = |z|^2 + |r|^2 - 2 z r^T
+    z2 = (z ** 2).sum(dim=1, keepdim=True)              # (B,1)
+    r2 = (Href ** 2).sum(dim=1, keepdim=True).T         # (1,M)
+    dist2 = z2 + r2 - 2.0 * (z @ Href.T)                # (B,M)
+    nn = dist2.argmin(dim=1)                            # (B,)
+    z_near = Href[nn]                                   # (B,D)
+    return ((z - z_near) ** 2).sum(dim=1).mean()
 
 
-def latent_ref_loss_nn(z_norm: torch.Tensor, Href_norm: torch.Tensor) -> torch.Tensor:
+def _rec_loss_l2sum_mean(x_hat: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
     """
-    NN by cosine similarity, loss by cosine distance.
-    z_norm:   (B,D) normalized
-    Href_norm:(M,D) normalized
+    Match paper epsilon = ||x - x'||^2 (sum), then averaged over batch.
     """
-    sim = z_norm @ Href_norm.T           # (B,M)
-    nn = sim.argmax(dim=1)               # (B,)
-    hnear = Href_norm[nn]                # (B,D)
-    return cosine_dist(z_norm, hnear).mean()
-
-
-def latent_ref_loss_random(z_norm: torch.Tensor, Href_norm: torch.Tensor) -> torch.Tensor:
-    """
-    Random pairing in normalized latent space, loss by cosine distance.
-    """
-    rid = torch.randint(0, Href_norm.shape[0], (z_norm.shape[0],), device=z_norm.device)
-    zref = Href_norm[rid].detach()
-    return cosine_dist(z_norm, zref).mean()
+    diff = (x_hat - x).reshape(x.shape[0], -1)
+    return (diff ** 2).sum(dim=1).mean()
 
 
 def train_cae(cfg: Dict[str, Any]) -> str:
     """
     Called by scripts/run_train_cae.py
+    Keys expected (your yaml):
+      data.npz_path, data.img_size, data.only_clean, data.limit
+      train.device, train.seed, train.epochs, train.batch_size, train.lr
+      train.lambda_refer, train.refer_m, train.num_workers, train.save_every
+      train.ref_clean_only (optional, debug only; default False)
+      output.out_dir
     """
 
+    # ---- make repo importable (so `from src...` works no matter cwd) ----
+    repo_root = Path(__file__).resolve().parents[2]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+
     exp_name = _get(cfg, "exp_name", default="run")
-    refer_mode = str(_get(cfg, "train", "refer_mode", default="nn")).lower()  # "nn" or "random"
 
     npz_path = _get(cfg, "data", "npz_path", default=None)
     img_size = int(_get(cfg, "data", "img_size", default=64))
@@ -146,34 +145,30 @@ def train_cae(cfg: Dict[str, Any]) -> str:
     seed = int(_get(cfg, "train", "seed", default=0))
     epochs = int(_get(cfg, "train", "epochs", default=100))
     batch_size = int(_get(cfg, "train", "batch_size", default=256))
-    lr = float(_get(cfg, "train", "lr", default=1e-3))
+    lr = float(_get(cfg, "train", "lr", default=5e-4))
     lambda_refer = float(_get(cfg, "train", "lambda_refer", default=1.0))
     refer_m = int(_get(cfg, "train", "refer_m", default=2048))
     num_workers = int(_get(cfg, "train", "num_workers", default=0))
     save_every = int(_get(cfg, "train", "save_every", default=10))
 
-    # Prevent the "hide info in ||z||" loophole
-    beta_norm = float(_get(cfg, "train", "beta_norm", default=5.0))
-
+    # Debug option ONLY (oracle-style)
     ref_clean_only = bool(_get(cfg, "train", "ref_clean_only", default=False))
+
     out_dir = _get(cfg, "output", "out_dir", default=f"outputs/cae/{exp_name}")
 
-    # ---------------- setup ----------------
     set_seed(seed)
-    repo_root = Path.cwd()
 
     if npz_path is None:
         raise ValueError("cfg.data.npz_path is required")
-
     npz_path = (repo_root / npz_path).resolve()
-    ds = NpzMixDataset(npz_path, only_clean=only_clean, limit=limit)
 
+    ds = NpzMixDataset(npz_path, only_clean=only_clean, limit=limit)
     y_dirty = ds.y_dirty
     N = len(ds)
 
     # Windows: avoid multiprocessing dataloader issues
     if os.name == "nt" and num_workers != 0:
-        print("[WARN] Windows: forcing num_workers=0 to avoid dataloader multiprocessing issues.")
+        print("[WARN] Windows: forcing num_workers=0.")
         num_workers = 0
 
     dl = DataLoader(
@@ -198,15 +193,14 @@ def train_cae(cfg: Dict[str, Any]) -> str:
     model = CAE(latent_dim=256).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
 
-    # ---------------- build ref_indices (once) ----------------
+    # ---- sample Drefer (fixed for all epochs, paper-style) ----
     rng = np.random.default_rng(seed)
-
     if ref_clean_only:
         pool = np.where(y_dirty == 0)[0]
-        tag = "CLEAN_ONLY"
+        ref_tag = "CLEAN_ONLY(debug)"
     else:
         pool = np.arange(N)
-        tag = "MIXED"
+        ref_tag = "MIXED(paper)"
 
     if len(pool) < refer_m:
         raise ValueError(f"ref pool size={len(pool)} < refer_m={refer_m}")
@@ -214,13 +208,11 @@ def train_cae(cfg: Dict[str, Any]) -> str:
     ref_indices = rng.choice(pool, size=refer_m, replace=False).astype(np.int64)
 
     print(
-        f"[REF] mode={tag} size={len(ref_indices)} dirty_ratio={float(y_dirty[ref_indices].mean()):.4f} "
-        f"(dirty={int(y_dirty[ref_indices].sum())}/{len(ref_indices)}) "
-        f"min={int(ref_indices.min())} max={int(ref_indices.max())} unique={len(np.unique(ref_indices))}"
+        f"[REF] REF={ref_tag} | M={refer_m} dirty_ratio={float(y_dirty[ref_indices].mean()):.4f} "
+        f"(dirty={int(y_dirty[ref_indices].sum())}/{len(ref_indices)})"
     )
-    print(f"[CFG] refer_mode={refer_mode} lambda_refer={lambda_refer} beta_norm={beta_norm} epochs={epochs} out_dir={out_dir}")
 
-    # ---------------- outputs/log ----------------
+    # ---- outputs/log ----
     out_dir = (repo_root / out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -228,21 +220,18 @@ def train_cae(cfg: Dict[str, Any]) -> str:
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / "train_log.csv"
     if not log_path.exists():
-        log_path.write_text(
-            "epoch,loss,rec,ref,norm_reg,lambda_ref,beta_norm,lambda_ref_times_ref,beta_norm_times_norm\n",
-            encoding="utf-8",
-        )
+        log_path.write_text("epoch,loss,rec,ref,lambda_refer,lambda_refer_times_ref\n", encoding="utf-8")
 
-    # ---------------- train ----------------
+    # ---- training ----
     t0 = time.time()
     for ep in range(1, epochs + 1):
-        # Step1: build Href once per epoch (paper-style)
-        Href = build_hrefer(model, ds, ref_indices, device=device, img_size=img_size, batch=256)
+        # build Href ONCE per epoch using current encoder (paper wording)
+        Href = _encode_latents(model, ds, ref_indices, device=device, img_size=img_size, batch=256)
 
         model.train()
-        pbar = tqdm(dl, desc=f"epoch {ep}/{epochs}", ncols=130)
+        pbar = tqdm(dl, desc=f"epoch {ep}/{epochs}", ncols=110)
 
-        loss_sum = rec_sum = ref_sum = norm_sum = 0.0
+        loss_sum = rec_sum = ref_sum = 0.0
         steps = 0
 
         for x_u8, _, _ in pbar:
@@ -250,22 +239,11 @@ def train_cae(cfg: Dict[str, Any]) -> str:
             x = _to_tensor_u8_bhwc(x_u8_np, device=device, img_size=img_size)
 
             x_hat, z = model(x)
-            rec = F.mse_loss(x_hat, x)
 
-            # refer works on direction only
-            z_norm = F.normalize(z, dim=1)
+            rec = _rec_loss_l2sum_mean(x_hat, x)
+            ref = _latent_nn_ref_loss(z, Href)
 
-            # stop model from encoding info into ||z||
-            norm_reg = ((z.norm(dim=1) - 1.0) ** 2).mean()
-
-            if refer_mode == "random":
-                ref = latent_ref_loss_random(z_norm, Href)
-            elif refer_mode == "nn":
-                ref = latent_ref_loss_nn(z_norm, Href)
-            else:
-                raise ValueError(f"Unknown refer_mode={refer_mode} (expected 'nn' or 'random')")
-
-            loss = rec + lambda_refer * ref + beta_norm * norm_reg
+            loss = rec + lambda_refer * ref
 
             opt.zero_grad(set_to_none=True)
             loss.backward()
@@ -275,27 +253,21 @@ def train_cae(cfg: Dict[str, Any]) -> str:
             loss_sum += float(loss.item())
             rec_sum += float(rec.item())
             ref_sum += float(ref.item())
-            norm_sum += float(norm_reg.item())
 
             pbar.set_postfix({
                 "loss": f"{loss_sum/steps:.4f}",
                 "rec":  f"{rec_sum/steps:.4f}",
-                "ref":  f"{ref_sum/steps:.6f}",
-                "lam*ref": f"{(lambda_refer*(ref_sum/steps)):.4f}",
-                "norm": f"{norm_sum/steps:.6f}",
-                "b*norm": f"{(beta_norm*(norm_sum/steps)):.4f}",
+                "ref":  f"{ref_sum/steps:.4f}",
             })
 
         # epoch log
         loss_m = loss_sum / max(steps, 1)
         rec_m = rec_sum / max(steps, 1)
         ref_m = ref_sum / max(steps, 1)
-        norm_m = norm_sum / max(steps, 1)
         lam_ref_m = lambda_refer * ref_m
-        b_norm_m = beta_norm * norm_m
 
         with open(log_path, "a", encoding="utf-8") as f:
-            f.write(f"{ep},{loss_m},{rec_m},{ref_m},{norm_m},{lambda_refer},{beta_norm},{lam_ref_m},{b_norm_m}\n")
+            f.write(f"{ep},{loss_m},{rec_m},{ref_m},{lambda_refer},{lam_ref_m}\n")
 
         # save ckpt
         if (ep % save_every == 0) or (ep == epochs):
