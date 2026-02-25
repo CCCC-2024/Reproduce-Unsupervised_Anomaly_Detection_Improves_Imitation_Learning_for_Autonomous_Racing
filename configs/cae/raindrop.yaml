@@ -8,13 +8,18 @@ data:
 train:
   device: cuda
   seed: 42
-  epochs: 100
+  refer_mode: random
+  epochs: 10
   batch_size: 256
-  lr: 5.0e-4
-  lambda_refer: 1.0
+  lr: 5.0e-4 
+  lambda_refer: 200.0
   refer_m: 2048
   num_workers: 0
-  save_every: 10
+  save_every: 1
+  ref_clean_only: true
+  beta_norm: 5.0
 
 output:
-  out_dir: outputs/cae/raindrop
+  # out_dir: outputs/cae/raindrop__ep10__refrandom__cleanref1__lam200
+  # out_dir: outputs/cae/raindrop__ep10__refrandom__cleanref1__lam200__znormcos
+  out_dir: outputs/cae/raindrop__ep10__refrandom__cleanref1__lam200__cos__normreg5

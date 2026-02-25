@@ -15,13 +15,18 @@ import yaml
 
 # ====== change here if needed, then click "Run" ======
 NPZ_PATH = "data/processed/raindrop_mix.npz"
-CKPT_PATH = "outputs/cae/raindrop/ckpt_ep100.pt"
+# CKPT_PATH = "outputs/cae/raindrop_ep10_cleanref_lam200/ckpt_ep010.pt"
+# CKPT_PATH = "outputs/cae/raindrop_ep10_cleanref_lam200_random/ckpt_ep010.pt"
 THRESH_CFG = "configs/postprocess/threshold.yaml"
 
-OUT_CSV = "outputs/scores/raindrop_ep100_scores_224pcc.csv"
-OUT_FIG = "outputs/figs/raindrop_ep100_pcc_224pcc.png"
-# =====================================================
 
+# OUT_CSV = "outputs/scores/raindrop_ep010_scores_224pcc.csv"
+# OUT_FIG = "outputs/figs/raindrop_ep010_pcc_224pcc.png"
+
+CKPT_PATH = "outputs/cae/raindrop__ep10__refrandom__cleanref1__lam200__cos__normreg5/ckpt_ep010.pt"
+OUT_CSV  = "outputs/scores/raindrop__ep10__refrandom__cleanref1__lam200__scores_224pcc_normreg5.csv"
+OUT_FIG  = "outputs/figs/raindrop__ep10__refrandom__cleanref1__lam200__pcc_224pcc_normreg5.png"
+# =====================================================
 
 def pcc_batch(x: torch.Tensor, y: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     """
@@ -82,7 +87,7 @@ def main():
     # ---- load ckpt/model ----
     ckpt_path_abs = repo_root / CKPT_PATH
     print("[DEBUG] CKPT_PATH =", ckpt_path_abs)
-    ckpt = torch.load(ckpt_path_abs, map_location="cpu")
+    ckpt = torch.load(ckpt_path_abs, map_location="cpu", weights_only=False)
     print("[DEBUG] ckpt keys:", list(ckpt.keys()))
 
     from src.models.cae import CAE
