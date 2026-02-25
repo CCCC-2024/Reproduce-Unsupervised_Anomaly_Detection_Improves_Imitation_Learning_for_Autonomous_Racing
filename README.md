@@ -10,7 +10,7 @@
 
 ## 0) 复现目标（验收点）
 
-### A. 异常检测 + 清洗（优先完成，对齐 Table II 思路）
+### A. 异常检测 + 清洗（优先完成， Table II ）
 对每个异常类型（例如 `raindrop / plastic / hitwall`）完成：
 1. 构造混合数据（clean : dirty = 10 : 1）
 2. 训练 CAE（含 latent reference loss）
@@ -20,10 +20,10 @@
 6. 用混合数据的 GT dirty 标签评估 **Precision / Recall（Table II 风格）**
 7. 导出 clean mask 与 cleaned 数据包，供后续 BC 使用
 
-### B. 模仿学习提升（后续）
+### B. 模仿学习提升
 拿到 steering/actions 标签后：
 - 训练 BC 控制器
-- 对比 all-data vs cleaned-data 的指标（论文使用 CTE；本仓库先支持离线指标与可视化，后续可扩展到完整评估）
+- 对比 all-data vs cleaned-data 的指标（论文使用 CTE；后续可扩展到完整评估）
 
 ---
 
@@ -94,7 +94,7 @@ TEA-LAB/
 - keys: `clean`, `foggy`, `greenmarker`, `plastic`, `raindrop`, `hitwall`, `debris`, `dirtytrain`
 - values: `uint8` 图像数组，shape 为 `(N, 224, 224, 3)`，像素范围 0~255
 
-### 3.2 混合数据（用于 Table II 风格评估）
+### 3.2 混合数据（Table II ）
 混合数据按 **clean : dirty = 10 : 1** 构造并保存为：
 - `data/processed/<dirty>_mix.npz`
 - `data/splits/<dirty>_mix_idx.npz`（固定抽样索引，复现一致性的关键）
@@ -103,7 +103,7 @@ TEA-LAB/
 
 ---
 
-## 4) 复现流程（推荐顺序）
+## 4) 复现流程
 
 > 所有命令都从仓库根目录执行：`TEA-LAB/`  
 > 不确定脚本参数时：`python scripts/<xxx>.py -h`
@@ -161,7 +161,7 @@ python scripts/run_clean_dataset.py -h
 python scripts/run_clean_dataset.py
 ```
 
-### Step 6 — 行为克隆（后续阶段）
+### Step 6 — 行为克隆
 待拿到 steering/actions 标签后：
 ```bash
 python scripts/run_train_bc.py -h
@@ -170,7 +170,7 @@ python scripts/run_train_bc.py
 
 ---
 
-## 5) outputs 约定（必须遵守）
+## 5) outputs 约定
 
 本仓库 **outputs/** 只保留以下四个子目录：
 - `outputs/cae/`：CAE checkpoints / logs  
@@ -180,8 +180,4 @@ python scripts/run_train_bc.py
 
 ---
 
-## 6) 复现注意事项
 
-- **复现一致性**：`data/splits/*_mix_idx.npz` 是关键（别删）。
-- **改超参不要覆盖基线**：建议新建 config 文件，例如 `configs/cae/raindrop_v2.yaml`。
-- CPU 训练较慢：可先用 debug_small 配置做快速验证，再跑完整配置。
